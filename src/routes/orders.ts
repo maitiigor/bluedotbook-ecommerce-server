@@ -1,13 +1,46 @@
 import { Router, Response } from 'express';
+import { body, param, validationResult } from 'express-validator';
 import Order from '../models/Order';
 import Cart from '../models/Cart';
 import { protect, admin, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
+// Validation middleware
+const validateCreateOrder = [
+  body('items').isArray({ min: 1 }).withMessage('Order must contain at least one item'),
+  body('items.*.productId').isMongoId().withMessage('Invalid product ID'),
+  body('items.*.name').trim().notEmpty().withMessage('Item name is required'),
+  body('items.*.price').isFloat({ min: 0.01 }).withMessage('Price must be a positive number'),
+  body('items.*.image').trim().notEmpty().withMessage('Image is required'),
+  body('items.*.quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
+  body('shippingAddress').isObject().withMessage('Shipping address is required'),
+  body('shippingAddress.fullName').trim().notEmpty().withMessage('Full name is required').isLength({ min: 2, max: 100 }).withMessage('Full name must be between 2 and 100 characters'),
+  body('shippingAddress.address').trim().notEmpty().withMessage('Address is required').isLength({ min: 5, max: 200 }).withMessage('Address must be between 5 and 200 characters'),
+  body('shippingAddress.city').trim().notEmpty().withMessage('City is required').isLength({ min: 2, max: 50 }).withMessage('City must be between 2 and 50 characters'),
+  body('shippingAddress.postalCode').trim().notEmpty().withMessage('Postal code is required').isLength({ min: 3, max: 20 }).withMessage('Postal code must be between 3 and 20 characters'),
+  body('shippingAddress.country').trim().notEmpty().withMessage('Country is required').isLength({ min: 2, max: 50 }).withMessage('Country must be between 2 and 50 characters')
+];
+
+const validateOrderId = [
+  param('id').isMongoId().withMessage('Invalid order ID')
+];
+
+const validateOrderStatus = [
+  param('id').isMongoId().withMessage('Invalid order ID'),
+  body('status').isIn(['pending', 'processing', 'shipped', 'delivered', 'cancelled']).withMessage('Invalid status value')
+];
+
 // POST create order
-router.post('/', protect, async (req: AuthRequest, res: Response): Promise<void> => {
+router.post('/', protect, validateCreateOrder, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ message: errors.array()[0].msg, errors: errors.array() });
+      return;
+    }
+
     const { items, shippingAddress } = req.body;
 
     if (!items || items.length === 0) {
@@ -58,8 +91,15 @@ router.get('/', protect, async (req: AuthRequest, res: Response): Promise<void> 
 });
 
 // GET single order
-router.get('/:id', protect, async (req: AuthRequest, res: Response): Promise<void> => {
+router.get('/:id', protect, validateOrderId, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ message: errors.array()[0].msg, errors: errors.array() });
+      return;
+    }
+
     const order = await Order.findById(req.params.id);
 
     if (!order) {
@@ -90,8 +130,15 @@ router.get('/admin/all', protect, admin, async (req: AuthRequest, res: Response)
 });
 
 // PUT update order status (admin only)
-router.put('/:id/status', protect, admin, async (req: AuthRequest, res: Response): Promise<void> => {
+router.put('/:id/status', protect, admin, validateOrderStatus, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ message: errors.array()[0].msg, errors: errors.array() });
+      return;
+    }
+
     const { status } = req.body;
 
     if (!['pending', 'processing', 'shipped', 'delivered', 'cancelled'].includes(status)) {

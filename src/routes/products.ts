@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { body, param, query, validationResult } from 'express-validator';
 import Product from '../models/Product';
 import { protect, admin, AuthRequest } from '../middleware/auth';
 import multer from 'multer';
@@ -41,9 +42,49 @@ const upload = multer({
   }
 });
 
+// Validation middleware
+const validateProductQuery = [
+  query('search').optional().trim().isLength({ max: 100 }).withMessage('Search term too long'),
+  query('category').optional().trim().isIn(['Electronics', 'Footwear', 'Accessories', 'Clothing']).withMessage('Invalid category'),
+  query('minPrice').optional().isFloat({ min: 0 }).withMessage('Min price must be a positive number'),
+  query('maxPrice').optional().isFloat({ min: 0 }).withMessage('Max price must be a positive number'),
+  query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
+  query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100')
+];
+
+const validateProductId = [
+  param('id').isMongoId().withMessage('Invalid product ID')
+];
+
+const validateCreateProduct = [
+  body('name').trim().notEmpty().withMessage('Product name is required').isLength({ min: 3, max: 100 }).withMessage('Name must be between 3 and 100 characters'),
+  body('price').isFloat({ min: 0.01 }).withMessage('Price must be a positive number'),
+  body('description').trim().notEmpty().withMessage('Description is required').isLength({ min: 10, max: 1000 }).withMessage('Description must be between 10 and 1000 characters'),
+  body('category').trim().notEmpty().withMessage('Category is required').isIn(['Electronics', 'Footwear', 'Accessories', 'Clothing']).withMessage('Invalid category'),
+  body('stock').optional().isInt({ min: 0 }).withMessage('Stock must be a non-negative integer'),
+  body('image').optional().trim().isURL().withMessage('Image must be a valid URL')
+];
+
+const validateUpdateProduct = [
+  param('id').isMongoId().withMessage('Invalid product ID'),
+  body('name').optional().trim().isLength({ min: 3, max: 100 }).withMessage('Name must be between 3 and 100 characters'),
+  body('price').optional().isFloat({ min: 0.01 }).withMessage('Price must be a positive number'),
+  body('description').optional().trim().isLength({ min: 10, max: 1000 }).withMessage('Description must be between 10 and 1000 characters'),
+  body('category').optional().trim().isIn(['Electronics', 'Footwear', 'Accessories', 'Clothing']).withMessage('Invalid category'),
+  body('stock').optional().isInt({ min: 0 }).withMessage('Stock must be a non-negative integer'),
+  body('image').optional().trim().isURL().withMessage('Image must be a valid URL')
+];
+
 // GET all products (Public)
-router.get('/', async (req: Request, res: Response): Promise<void> => {
+router.get('/', validateProductQuery, async (req: Request, res: Response): Promise<void> => {
   try {
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ message: errors.array()[0].msg, errors: errors.array() });
+      return;
+    }
+
     const { search, category, minPrice, maxPrice, page = '1', limit = '12' } = req.query;
     let query: any = {};
 
@@ -82,8 +123,15 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
 });
 
 // GET single product (Public)
-router.get('/:id', async (req: Request, res: Response): Promise<void> => {
+router.get('/:id', validateProductId, async (req: Request, res: Response): Promise<void> => {
   try {
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ message: errors.array()[0].msg, errors: errors.array() });
+      return;
+    }
+
     const product = await Product.findById(req.params.id);
     
     if (!product) {
@@ -97,8 +145,15 @@ router.get('/:id', async (req: Request, res: Response): Promise<void> => {
 });
 
 // POST create product (Private/Admin)
-router.post('/', protect, admin, upload.single('image'), async (req: AuthRequest, res: Response): Promise<void> => {
+router.post('/', protect, admin, upload.single('image'), validateCreateProduct, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ message: errors.array()[0].msg, errors: errors.array() });
+      return;
+    }
+
     const productData: any = {
       name: req.body.name,
       price: req.body.price,
@@ -126,8 +181,15 @@ router.post('/', protect, admin, upload.single('image'), async (req: AuthRequest
 });
 
 // PUT update product (Private/Admin)
-router.put('/:id', protect, admin, upload.single('image'), async (req: AuthRequest, res: Response): Promise<void> => {
+router.put('/:id', protect, admin, upload.single('image'), validateUpdateProduct, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ message: errors.array()[0].msg, errors: errors.array() });
+      return;
+    }
+
     const updateData: any = {
       name: req.body.name,
       price: req.body.price,
@@ -155,8 +217,15 @@ router.put('/:id', protect, admin, upload.single('image'), async (req: AuthReque
 });
 
 // DELETE product (Private/Admin)
-router.delete('/:id', protect, admin, async (req: AuthRequest, res: Response): Promise<void> => {
+router.delete('/:id', protect, admin, validateProductId, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ message: errors.array()[0].msg, errors: errors.array() });
+      return;
+    }
+
     const deletedProduct = await Product.findByIdAndDelete(req.params.id);
     if (!deletedProduct) {
       res.status(404).json({ message: 'Product not found' });
